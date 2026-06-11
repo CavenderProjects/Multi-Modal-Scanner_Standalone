@@ -122,7 +122,7 @@ The Claude Code skill ([Multi-Modal-Scanner](https://github.com/CavenderProjects
 
 ---
 
-## Limitations and Honest Caveats
+## Limitations and Caveats
 
 This is a **workflow augmentation tool**, not an autonomous security assessment engine.
 
