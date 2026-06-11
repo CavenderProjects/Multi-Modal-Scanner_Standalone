@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.pyo
+assessments.db
+reports/
+test_targets/
+*.tmp
