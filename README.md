@@ -1,6 +1,6 @@
 # Multi-Modal-Scanner: Standalone Desktop App
 
-> Full PyQt6 desktop application for regulated-environment security assessment. Runs independently — no Claude Code, no API dependency, no internet connection required during scans. Built and maintained by a senior information security professional with 20 years of GRC and security management experience across financial services, healthcare, and real estate.
+> Full PyQt6 desktop application for regulated-environment security assessment. Runs independently — no Claude Code, no Anthropic API dependency. Built and maintained by a senior information security professional with 20 years of GRC and security management experience across financial services, healthcare, and real estate.
 
 ---
 
@@ -26,7 +26,7 @@ A standalone GUI application that provides **seven assessment workflows**:
 
 **In-app triage interface** — Review findings, confirm or suppress results, and add notes directly in the application before exporting.
 
-**Offline capable** — After Python dependencies are installed, no internet connection is required during scans. Designed for use in air-gapped or restricted environments where a Claude API connection is not available or not permitted.
+**No Anthropic API required** — The scan engine runs locally without calling Claude. Website and API scans require network access to reach their targets; OS, code review, STIG, and agent assessments run without any external network access. Designed for use in environments where a Claude API connection is not available or not permitted.
 
 **Windows and Linux support** — The OS & Software scanner has separate code paths for both platforms.
 
@@ -114,7 +114,7 @@ The Claude Code skill ([Multi-Modal-Scanner](https://github.com/CavenderProjects
 | Feature | Claude Code Skill | Standalone App |
 |---------|-------------------|----------------|
 | Runtime | Claude Code | Python + PyQt6 (desktop) |
-| Internet required | Yes (Claude API) | No (local scan engine) |
+| Claude API required | Yes | No |
 | Scan history | Per session | SQLite database, persistent |
 | Report triage | In report (browser) | In-app triage interface |
 | OS & Software assessment | No | Yes |
