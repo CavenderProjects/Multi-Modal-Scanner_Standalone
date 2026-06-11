@@ -226,6 +226,12 @@ def _parse_control_section(section: str, library_key: str) -> Optional[Control]:
         'security override guidance', 'potential impact', 'third party tools',
         'mitigation control', 'severity override guidance', 'title', 'id', 'mitigations',
         'applicable platforms', 'notes', 'common consequences', 'observed examples',
+        # Framework reference fields — must not leak into review_procedure
+        'owasp', 'owasp-api', 'nist-800', 'iso-27001', 'cmmc', 'dod-srg', 'fedramp',
+        'hipaa', 'pci-dss', 'soc2', 'sec-finra', 'eu-dora', 'eu-ai',
+        'owasp-llm', 'nist-ai', 'iso-42001', 'saif', 'csa-ai',
+        # Secondary CIA classification
+        'secondary', 'secondary cia', 'secondary cia (if applicable)',
     }
     review_parts = []
     if test_proc:

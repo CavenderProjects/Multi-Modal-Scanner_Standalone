@@ -180,6 +180,7 @@ def generate_html_report(engine, output_path: str) -> str:
             "mitigationDesc": r.fp_justification if r.is_false_positive else "",
             "note": getattr(r, 'user_notes', '') or "",
             "tier": r.tier,
+            "statement": r.control.statement or "",
             "review_steps": r.control.review_procedure or r.control.test_procedure or "",
             "reachability": r.reachability or "DIRECT",
             "cvss": {
