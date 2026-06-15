@@ -149,6 +149,7 @@ _OS_EOL = {
     'windows 8.1':              '2023-01-10',
     'windows 8':                '2016-01-12',
     'windows 10':               None,           # version-dependent — checked separately
+    'windows 11':               None,           # version-dependent — checked separately
     'windows server 2008':      '2020-01-14',
     'windows server 2012':      '2023-10-10',
     'windows server 2016':      '2027-01-12',
@@ -157,9 +158,17 @@ _OS_EOL = {
     # Windows 10 feature versions (check display_version)
     'win10-21h1':               '2022-12-13',
     'win10-21h2':               '2023-06-13',
-    'win10-22h2':               '2025-10-14',   # still supported as of 2026
+    'win10-22h2':               '2025-10-14',   # Enterprise/Education date
     'win10-1909':               '2021-05-11',
     'win10-20h2':               '2022-05-10',
+    # Windows 11 feature versions (Enterprise/Education dates — longer support window)
+    # Source: learn.microsoft.com/lifecycle/products/windows-11-enterprise-and-education
+    'win11-21h2':               '2024-10-08',
+    'win11-22h2':               '2025-10-14',
+    'win11-23h2':               '2026-11-10',
+    'win11-24h2':               '2027-10-12',
+    'win11-25h2':               '2028-10-10',
+    'win11-26h1':               '2029-03-13',
     # Ubuntu
     'ubuntu 16.04':             '2021-04-30',
     'ubuntu 18.04':             '2023-04-30',
@@ -492,17 +501,22 @@ class OSVersionScanner:
         # Check product name first (more specific for Windows)
         check_str = product_name or os_lower
 
-        # Windows 10 feature version check
+        # Windows 10 / 11 feature version check
         display_version = info.get('display_version', '')
         if 'windows 10' in check_str and display_version:
             win10_key = f"win10-{display_version.lower()}"
             if win10_key in _OS_EOL:
                 eol_date_str = _OS_EOL[win10_key]
                 matched_key = win10_key
+        if eol_date_str is None and 'windows 11' in check_str and display_version:
+            win11_key = f"win11-{display_version.lower()}"
+            if win11_key in _OS_EOL:
+                eol_date_str = _OS_EOL[win11_key]
+                matched_key = win11_key
 
         if eol_date_str is None:
             for key, eol in sorted(_OS_EOL.items(), key=lambda x: -len(x[0])):
-                if key.startswith('win10-'):
+                if key.startswith('win10-') or key.startswith('win11-'):
                     continue
                 if key in check_str or key in os_lower:
                     if eol is not None:
