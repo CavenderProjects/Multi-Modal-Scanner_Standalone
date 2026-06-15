@@ -208,12 +208,17 @@ class AssessmentEngine:
                 related = [sr for sr in scan_results
                           if sr.control_id.startswith(family)]
                 if related:
+                    # Related controls tested — show for context only.
+                    # Do NOT infer compliance from related results;
+                    # each control must be independently confirmed.
                     ev_lines = [f"No scanner maps directly to {ctrl_id}, but related {family} controls were tested:"]
                     for rel in related[:5]:
                         status_tag = "PASS" if rel.status == 'COMPLIANT' else "FAIL"
                         ev_lines.append(f"  [{status_tag}] {rel.control_id}: {rel.evidence[:100]}")
+                    ev_lines.append("")
+                    ev_lines.append(f"Review the above evidence and manually confirm whether {ctrl_id} is met.")
                     ar.evidence = '\n'.join(ev_lines)
-                    ar.status = 'COMPLIANT' if all(r.status == 'COMPLIANT' for r in related) else 'NEEDS_REVIEW'
+                    ar.status = 'NEEDS_REVIEW'  # Never infer status from related controls
                     ar.confidence = 0.5
                 else:
                     ar.status = 'NEEDS_REVIEW'
