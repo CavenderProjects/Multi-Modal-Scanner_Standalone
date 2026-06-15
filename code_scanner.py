@@ -131,6 +131,50 @@ VULN_PATTERNS['typescript'] = VULN_PATTERNS['javascript']
 # Copy c patterns for cpp (additions already in cpp)
 VULN_PATTERNS.setdefault('c', VULN_PATTERNS['cpp'])
 
+# ── CPX control sets for COMPLIANT reporting ──
+# These controls are evaluated whenever source files of the appropriate language
+# are scanned. A COMPLIANT result is emitted for any that had no NON_COMPLIANT findings.
+
+_CPX_UNIVERSAL = {
+    'CPX-STRUCT-004',   # file length         — all languages
+    'CPX-STRUCT-001',   # function length     — all languages
+    'CPX-METRIC-001',   # cyclomatic complexity — all languages
+    'CPX-STRUCT-003',   # nesting depth       — all languages
+}
+
+_CPX_BY_LANG = {
+    'python':     {'CPX-MAINTAIN-001', 'CPX-MAINTAIN-002', 'CPX-MAINTAIN-003'},
+    'javascript': {'CPX-MAINTAIN-003'},
+    'typescript': {'CPX-MAINTAIN-003'},
+    'java':       {'CPX-MAINTAIN-003'},
+    'go':         {'CPX-MAINTAIN-003'},
+    'php':        {'CPX-MAINTAIN-003'},
+}
+
+
+def _build_compliant_results(detected_langs: set, noncompliant_ids: set) -> list:
+    """Return COMPLIANT ScanResults for every checked control that had no violations."""
+    if not detected_langs:
+        return []
+
+    checked = set(_CPX_UNIVERSAL)
+    for lang in detected_langs:
+        for ctrl_id, *_ in VULN_PATTERNS.get(lang, []):
+            checked.add(ctrl_id)
+        checked |= _CPX_BY_LANG.get(lang, set())
+
+    results = []
+    for ctrl_id in sorted(checked - noncompliant_ids):
+        results.append(ScanResult(
+            scanner='code-analysis',
+            control_id=ctrl_id,
+            status='COMPLIANT',
+            evidence='No violations found in scanned source files.',
+            confidence=0.85,
+            reachability='INTERNAL',
+        ))
+    return results
+
 
 def detect_language(filepath: str) -> str:
     ext = os.path.splitext(filepath)[1].lower()
@@ -382,6 +426,7 @@ def scan_directory(dir_path: str, progress_callback=None) -> list:
             if ext in LANG_EXTENSIONS:
                 files.append(os.path.join(root, fname))
 
+    detected_langs = set()
     for i, filepath in enumerate(files):
         if progress_callback:
             progress_callback('code-analysis', f'Scanning {os.path.basename(filepath)}',
@@ -389,10 +434,17 @@ def scan_directory(dir_path: str, progress_callback=None) -> list:
 
         file_results = scan_file(filepath)
         all_results.extend(file_results)
+        lang = detect_language(filepath)
+        if lang:
+            detected_langs.add(lang)
 
         if progress_callback:
             progress_callback('code-analysis', f'Scanned {os.path.basename(filepath)}',
                             'done', file_results)
+
+    # Emit COMPLIANT for every control that was checked but had no violations
+    noncompliant_ids = {r.control_id for r in all_results if r.status == 'NON_COMPLIANT'}
+    all_results.extend(_build_compliant_results(detected_langs, noncompliant_ids))
 
     return all_results
 
@@ -405,6 +457,11 @@ def scan_target(target: str, progress_callback=None) -> list:
         if progress_callback:
             progress_callback('code-analysis', f'Scanning {os.path.basename(target)}', 'running', [])
         results = scan_file(target)
+        # Emit COMPLIANT for every control that was checked but had no violations
+        lang = detect_language(target)
+        if lang:
+            noncompliant_ids = {r.control_id for r in results if r.status == 'NON_COMPLIANT'}
+            results.extend(_build_compliant_results({lang}, noncompliant_ids))
         if progress_callback:
             progress_callback('code-analysis', f'Scanned {os.path.basename(target)}', 'done', results)
         return results
