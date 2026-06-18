@@ -4,7 +4,7 @@ Tier 1 (Automatic confirmation): Runs scanners, applies rules, pass/fail.
 Tier 2 (Review required): Collects evidence, calculates confidence, queues for user.
 Tier 3 (Manual confirmation): Presents checklist, user answers from knowledge.
 
-Integrates with DB for prior decisions and false positive suppression.
+Report-based FP and note carryforward: load a prior HTML report via prior_report_data.
 """
 
 import time
@@ -13,8 +13,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Callable
 from controls import Control, load_all_controls, get_tier_counts
 from scanners import run_all_scanners, ScanResult
-from db import (init_db, SystemsDB, ScansDB, DecisionsDB,
-                FalsePositivesDB, FindingsDB, evidence_hash)
+from db import (init_db, SystemsDB, ScansDB, FindingsDB)
 
 try:
     from code_scanner import scan_target as scan_code
@@ -51,9 +50,6 @@ class AssessmentResult:
     remediation: str = ""
     is_false_positive: bool = False
     fp_justification: str = ""
-    prior_decision: Optional[dict] = None
-    prior_evidence_changed: bool = False
-    user_decision: str = ""
     user_notes: str = ""
     scanner_name: str = ""
 
@@ -63,7 +59,7 @@ class AssessmentEngine:
 
     def __init__(self, target: str, target_type: str, system_id: int,
                  selected_sets: list, stig_paths: list = None,
-                 framework_filter: str = None, use_prior: bool = False,
+                 framework_filter: str = None,
                  prior_fp_ids: set = None,
                  prior_report_data: dict = None):
         self.target = target
@@ -72,8 +68,7 @@ class AssessmentEngine:
         self.selected_sets = selected_sets
         self.stig_paths = stig_paths or []
         self.framework_filter = framework_filter
-        self.use_prior = use_prior
-        # prior_report_data is the authoritative source; prior_fp_ids kept for compat
+        # prior_report_data is the authoritative source for FPs and notes
         if prior_report_data is not None:
             self.prior_report_data = prior_report_data
             self.prior_fp_ids = {cid for cid, v in prior_report_data.items() if v.get('is_fp')}
@@ -87,7 +82,6 @@ class AssessmentEngine:
         self.manual_items = []
         self.all_results = []
         self.scan_id = None
-        self.false_positives = []
 
     def load_controls(self):
         """Load and classify all selected controls."""
@@ -99,11 +93,6 @@ class AssessmentEngine:
         for ctrl in self.controls:
             result = AssessmentResult(control=ctrl, tier=ctrl.tier)
 
-            # Load prior decision if available
-            prior = DecisionsDB.get_prior(self.system_id, ctrl.control_id)
-            if prior:
-                result.prior_decision = prior
-
             self.all_results.append(result)
 
             if ctrl.tier == "automatic_confirmation":
@@ -112,9 +101,6 @@ class AssessmentEngine:
                 self.review_items.append(result)
             else:
                 self.manual_items.append(result)
-
-        # Load false positives
-        self.false_positives = FalsePositivesDB.get_active(self.system_id)
 
         return get_tier_counts(self.controls)
 
@@ -186,22 +172,6 @@ class AssessmentEngine:
                 ar.reachability = sr.reachability or 'DIRECT'
                 ar.remediation = sr.remediation
                 ar.scanner_name = sr.scanner
-
-                # Check false positive suppression
-                fp_entry = next(
-                    (fp for fp in self.false_positives if fp['control_id'] == ctrl_id),
-                    None
-                )
-                if fp_entry:
-                    ev_changed = FalsePositivesDB.check_evidence_changed(
-                        self.system_id, ctrl_id, sr.evidence
-                    )
-                    if ev_changed:
-                        ar.prior_evidence_changed = True
-                    else:
-                        ar.is_false_positive = True
-                        ar.fp_justification = fp_entry['justification']
-                        ar.status = 'FALSE_POSITIVE'
             else:
                 # No direct scanner match — build contextual evidence
                 family = ctrl_id.rsplit('-', 1)[0] if '-' in ctrl_id else ctrl_id
@@ -321,30 +291,6 @@ class AssessmentEngine:
                 if not ar.remediation:
                     ar.remediation = ar.control.fix_text or ar.control.statement
 
-            # Check if prior decision exists and evidence hasn't changed
-            if ar.prior_decision and self.use_prior:
-                prior_hash = ar.prior_decision.get('evidence_hash', '')
-                current_hash = evidence_hash(ar.evidence)
-                if prior_hash == current_hash:
-                    ar.prior_evidence_changed = False
-                else:
-                    ar.prior_evidence_changed = True
-
-            # Check false positive
-            fp_entry = next(
-                (fp for fp in self.false_positives if fp['control_id'] == ctrl_id),
-                None
-            )
-            if fp_entry:
-                ev_changed = FalsePositivesDB.check_evidence_changed(
-                    self.system_id, ctrl_id, ar.evidence
-                )
-                if not ev_changed:
-                    ar.is_false_positive = True
-                    ar.fp_justification = fp_entry['justification']
-                else:
-                    ar.prior_evidence_changed = True
-
         # Populate evidence / procedure for manual confirmation controls
         # (no scanner covers these; they were never touched above)
         for ar in self.manual_items:
@@ -390,80 +336,6 @@ class AssessmentEngine:
                     ar.fp_justification = "Carried forward from previous assessment report"
                     ar.status = 'FALSE_POSITIVE'
 
-    def apply_review_decision(self, index: int, decision: str,
-                              notes: str = "", fp_justification: str = ""):
-        """Apply user decision to a review_required item."""
-        if index >= len(self.review_items):
-            return
-        ar = self.review_items[index]
-        ar.user_decision = decision
-        ar.user_notes = notes
-
-        if decision == 'false_positive':
-            ar.is_false_positive = True
-            ar.fp_justification = fp_justification
-            ar.status = 'FALSE_POSITIVE'
-            FalsePositivesDB.add(self.system_id, ar.control.control_id,
-                                fp_justification, ar.evidence)
-        elif decision == 'accept':
-            ar.status = 'NON_COMPLIANT'
-        elif decision == 'compliant':
-            ar.status = 'COMPLIANT'
-        elif decision == 'na':
-            ar.status = 'NOT_APPLICABLE'
-
-        # Save decision
-        DecisionsDB.save(
-            self.system_id, ar.control.control_id, self.scan_id,
-            'review_required', decision, ar.evidence, notes
-        )
-        if self.scan_id:
-            FindingsDB.save(
-                self.scan_id, ar.control.control_id, 'review_required',
-                ar.status, severity=ar.severity, evidence=ar.evidence,
-                confidence=ar.confidence, cvss_score=ar.cvss_score,
-                cvss_vector=ar.cvss_vector, remediation=ar.remediation,
-                is_false_positive=ar.is_false_positive
-            )
-
-    def apply_manual_decision(self, index: int, decision: str, notes: str = ""):
-        """Apply user decision to a manual_confirmation item."""
-        if index >= len(self.manual_items):
-            return
-        ar = self.manual_items[index]
-        ar.user_decision = decision
-        ar.user_notes = notes
-
-        if decision == 'fail':
-            ar.status = 'NON_COMPLIANT'
-            ar.severity = ar.control.severity
-        elif decision == 'pass':
-            ar.status = 'COMPLIANT'
-        elif decision == 'na':
-            ar.status = 'NOT_APPLICABLE'
-
-        DecisionsDB.save(
-            self.system_id, ar.control.control_id, self.scan_id,
-            'manual_confirmation', decision, notes=notes
-        )
-        if self.scan_id:
-            FindingsDB.save(
-                self.scan_id, ar.control.control_id, 'manual_confirmation',
-                ar.status, severity=ar.severity, remediation=ar.control.fix_text
-            )
-
-    def apply_all_prior_manual(self):
-        """Apply all prior decisions to manual items where available."""
-        applied = 0
-        for ar in self.manual_items:
-            if ar.prior_decision and not ar.user_decision:
-                decision = ar.prior_decision['decision']
-                notes = ar.prior_decision.get('notes', '')
-                self.apply_manual_decision(
-                    self.manual_items.index(ar), decision, notes
-                )
-                applied += 1
-        return applied
 
     def complete(self, report_path: str = None):
         """Finalize the scan, update DB."""
@@ -498,8 +370,6 @@ class AssessmentEngine:
             'review_total': len(self.review_items),
             'manual_total': len(self.manual_items),
             'auto_findings': sum(1 for r in self.auto_results if r.status == 'NON_COMPLIANT'),
-            'review_decided': sum(1 for r in self.review_items if r.user_decision),
-            'manual_decided': sum(1 for r in self.manual_items if r.user_decision),
         }
 
     def get_findings(self) -> list:

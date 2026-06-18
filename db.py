@@ -1,7 +1,7 @@
 """SQLite persistence layer for the security assessment tool.
 
-Stores: target systems, scan history, per-control decisions, false positives,
-and imported STIGs. Keyed by target+control for decision carry-forward.
+Stores: target systems, scan history, scanner findings, and imported STIGs.
+Decisions and false positives are tracked via HTML report carryforward, not DB.
 """
 
 import sqlite3
@@ -52,35 +52,6 @@ def init_db():
             framework_filter TEXT,
             report_path TEXT,
             FOREIGN KEY (system_id) REFERENCES systems(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS decisions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            system_id INTEGER NOT NULL,
-            control_id TEXT NOT NULL,
-            scan_id INTEGER,
-            tier TEXT NOT NULL,
-            decision TEXT NOT NULL,
-            evidence_hash TEXT,
-            notes TEXT,
-            decided_at TEXT NOT NULL,
-            decided_by TEXT DEFAULT 'user',
-            FOREIGN KEY (system_id) REFERENCES systems(id),
-            FOREIGN KEY (scan_id) REFERENCES scans(id),
-            UNIQUE(system_id, control_id)
-        );
-
-        CREATE TABLE IF NOT EXISTS false_positives (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            system_id INTEGER NOT NULL,
-            control_id TEXT NOT NULL,
-            justification TEXT NOT NULL,
-            evidence_hash TEXT,
-            created_at TEXT NOT NULL,
-            last_validated TEXT,
-            is_active INTEGER DEFAULT 1,
-            FOREIGN KEY (system_id) REFERENCES systems(id),
-            UNIQUE(system_id, control_id)
         );
 
         CREATE TABLE IF NOT EXISTS imported_stigs (
@@ -200,93 +171,6 @@ class ScansDB:
         ).fetchall()
         conn.close()
         return [dict(r) for r in rows]
-
-
-class DecisionsDB:
-    @staticmethod
-    def get_prior(system_id, control_id):
-        conn = get_connection()
-        row = conn.execute(
-            "SELECT * FROM decisions WHERE system_id=? AND control_id=?",
-            (system_id, control_id)
-        ).fetchone()
-        conn.close()
-        return dict(row) if row else None
-
-    @staticmethod
-    def get_all_for_system(system_id):
-        conn = get_connection()
-        rows = conn.execute(
-            "SELECT * FROM decisions WHERE system_id=? ORDER BY decided_at DESC",
-            (system_id,)
-        ).fetchall()
-        conn.close()
-        return [dict(r) for r in rows]
-
-    @staticmethod
-    def save(system_id, control_id, scan_id, tier, decision, evidence_text=None, notes=None):
-        conn = get_connection()
-        now = datetime.now().isoformat()
-        eh = evidence_hash(evidence_text)
-        conn.execute("""
-            INSERT INTO decisions (system_id, control_id, scan_id, tier, decision, evidence_hash, notes, decided_at)
-            VALUES (?,?,?,?,?,?,?,?)
-            ON CONFLICT(system_id, control_id) DO UPDATE SET
-                scan_id=excluded.scan_id, decision=excluded.decision,
-                evidence_hash=excluded.evidence_hash, notes=excluded.notes,
-                decided_at=excluded.decided_at
-        """, (system_id, control_id, scan_id, tier, decision, eh, notes, now))
-        conn.commit()
-        conn.close()
-
-
-class FalsePositivesDB:
-    @staticmethod
-    def add(system_id, control_id, justification, evidence_text=None):
-        conn = get_connection()
-        now = datetime.now().isoformat()
-        eh = evidence_hash(evidence_text)
-        conn.execute("""
-            INSERT INTO false_positives (system_id, control_id, justification, evidence_hash, created_at, last_validated)
-            VALUES (?,?,?,?,?,?)
-            ON CONFLICT(system_id, control_id) DO UPDATE SET
-                justification=excluded.justification, evidence_hash=excluded.evidence_hash,
-                last_validated=excluded.last_validated, is_active=1
-        """, (system_id, control_id, justification, eh, now, now))
-        conn.commit()
-        conn.close()
-
-    @staticmethod
-    def get_active(system_id):
-        conn = get_connection()
-        rows = conn.execute(
-            "SELECT * FROM false_positives WHERE system_id=? AND is_active=1",
-            (system_id,)
-        ).fetchall()
-        conn.close()
-        return [dict(r) for r in rows]
-
-    @staticmethod
-    def check_evidence_changed(system_id, control_id, new_evidence):
-        conn = get_connection()
-        row = conn.execute(
-            "SELECT evidence_hash FROM false_positives WHERE system_id=? AND control_id=? AND is_active=1",
-            (system_id, control_id)
-        ).fetchone()
-        conn.close()
-        if not row:
-            return False
-        return row["evidence_hash"] != evidence_hash(new_evidence)
-
-    @staticmethod
-    def remove(system_id, control_id):
-        conn = get_connection()
-        conn.execute(
-            "UPDATE false_positives SET is_active=0 WHERE system_id=? AND control_id=?",
-            (system_id, control_id)
-        )
-        conn.commit()
-        conn.close()
 
 
 class StigsDB:
