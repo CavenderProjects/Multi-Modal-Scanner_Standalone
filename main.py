@@ -798,6 +798,23 @@ class MainWindow(QMainWindow):
         sys.path.insert(0, tools_dir)
         from stig_parser import to_markdown
 
+        # Apply profile filter if user selected one (index 0 = All rules)
+        profile_idx = dialog.profile_combo.currentIndex()
+        if profile_idx > 0 and parsed.get('profiles'):
+            selected_profile = parsed['profiles'][profile_idx - 1]
+            profile_rule_set = set(selected_profile['selected_rules'])
+            filtered_rules = [
+                r for r in parsed['rules']
+                if r['vuln_id'] in profile_rule_set or r['rule_id'] in profile_rule_set
+            ]
+            parsed = dict(parsed, rules=filtered_rules, stats={
+                'total_rules': len(filtered_rules),
+                'cat_i':   sum(1 for r in filtered_rules if r['stig_severity'] == 'high'),
+                'cat_ii':  sum(1 for r in filtered_rules if r['stig_severity'] == 'medium'),
+                'cat_iii': sum(1 for r in filtered_rules if r['stig_severity'] == 'low'),
+            })
+            s = parsed['stats']
+
         refs_dir = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "references"
         )

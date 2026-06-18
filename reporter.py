@@ -32,20 +32,20 @@ def _parse_controls_from_html(content: str):
             except (json.JSONDecodeError, ValueError):
                 pass
 
-    # ── Old template format: inline JS variable ──
-    marker = 'const CONTROLS = '
-    idx = content.find(marker)
-    if idx != -1:
-        idx += len(marker)
-        while idx < len(content) and content[idx] in ' \t\n\r':
-            idx += 1
-        try:
-            decoder = json.JSONDecoder()
-            parsed, _ = decoder.raw_decode(content, idx)
-            if isinstance(parsed, list):
-                return parsed
-        except (json.JSONDecodeError, ValueError):
-            pass
+    # ── Old template format: inline JS variable (const or var) ──
+    for marker in ('const CONTROLS = ', 'var CONTROLS = '):
+        idx = content.find(marker)
+        if idx != -1:
+            idx += len(marker)
+            while idx < len(content) and content[idx] in ' \t\n\r':
+                idx += 1
+            try:
+                decoder = json.JSONDecoder()
+                parsed, _ = decoder.raw_decode(content, idx)
+                if isinstance(parsed, list):
+                    return parsed
+            except (json.JSONDecodeError, ValueError):
+                pass
 
     return None
 
@@ -76,9 +76,11 @@ def extract_prior_data_from_report(html_path: str) -> dict:
         for c in controls:
             if not isinstance(c, dict) or not c.get('id'):
                 continue
-            is_fp   = c.get('mitigation') == 'YES'
-            just    = c.get('mitigationDesc', '').strip()
-            note    = c.get('note', '').strip()
+            # Handle both non-STIG field names (mitigation/mitigationDesc/note)
+            # and STIG field names (isFalsePositive/fpJustification)
+            is_fp   = c.get('mitigation') == 'YES' or bool(c.get('isFalsePositive'))
+            just    = (c.get('mitigationDesc') or c.get('fpJustification', '')).strip()
+            note    = (c.get('note') or c.get('userNotes', '')).strip()
             if is_fp or note:
                 result[c['id']] = {
                     'is_fp':         is_fp,
@@ -144,13 +146,19 @@ def get_stig_template_path():
 
 
 def _sev_to_cat(severity: str) -> str:
-    """Map CVSS-style severity to STIG CAT level."""
+    """Map pen-tester severity back to STIG CAT level.
+
+    Reverses the SEVERITY_MAP in stig_parser.py:
+      stig high   -> CRITICAL -> CAT I
+      stig medium -> HIGH     -> CAT II
+      stig low    -> MEDIUM   -> CAT III
+    """
     s = (severity or "").upper()
-    if s in ("CRITICAL", "HIGH"):
+    if s == "CRITICAL":
         return "CAT I"
-    if s == "MEDIUM":
+    if s == "HIGH":
         return "CAT II"
-    if s == "LOW":
+    if s in ("MEDIUM", "LOW"):
         return "CAT III"
     return "CAT II"
 
