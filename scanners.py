@@ -23,11 +23,6 @@ try:
 except ImportError:
     HAS_REQUESTS = False
 
-try:
-    from bs4 import BeautifulSoup
-    HAS_BS4 = True
-except ImportError:
-    HAS_BS4 = False
 
 
 @dataclass
@@ -38,7 +33,6 @@ class ScanResult:
     severity: str = "MEDIUM"
     evidence: str = ""
     confidence: float = 1.0
-    elapsed_seconds: float = 0.0
     remediation: str = ""
     cvss_score: float = 0.0
     cvss_vector: str = ""
@@ -98,7 +92,6 @@ class TLSScanner:
                     scanner=self.name, control_id='CRYPTO-005',
                     status='NON_COMPLIANT', severity='HIGH',
                     evidence=f"Certificate validation failed: {e}",
-                    elapsed_seconds=time.time() - start,
                     cvss_score=7.4, cvss_vector="CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N",
                     remediation="Install a valid TLS certificate from a trusted CA."
                 ))
@@ -107,7 +100,6 @@ class TLSScanner:
                     scanner=self.name, control_id='CRYPTO-001',
                     status='NON_COMPLIANT', severity='CRITICAL',
                     evidence=f"TLS connection failed: {e}",
-                    elapsed_seconds=time.time() - start,
                     cvss_score=9.1, cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N",
                     remediation="Configure the server to support TLS 1.2 or higher."
                 ))
@@ -121,7 +113,6 @@ class TLSScanner:
                     scanner=self.name, control_id='CRYPTO-001',
                     status='NON_COMPLIANT', severity='CRITICAL',
                     evidence=f"Weak TLS protocols accepted: {', '.join(weak_protos)}\nCurrent connection: {tls_version}",
-                    elapsed_seconds=elapsed,
                     cvss_score=7.5, cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
                     remediation="Disable TLS 1.0 and 1.1. Only allow TLS 1.2+."
                 ))
@@ -129,8 +120,7 @@ class TLSScanner:
                 results.append(ScanResult(
                     scanner=self.name, control_id='CRYPTO-001',
                     status='COMPLIANT',
-                    evidence=f"TLS version: {tls_version}. No weak protocols accepted.",
-                    elapsed_seconds=elapsed
+                    evidence=f"TLS version: {tls_version}. No weak protocols accepted."
                 ))
 
             # CRYPTO-002: Cipher suite
@@ -143,7 +133,6 @@ class TLSScanner:
                         scanner=self.name, control_id='CRYPTO-002',
                         status='NON_COMPLIANT', severity='HIGH',
                         evidence=f"Weak cipher in use: {cipher_name}",
-                        elapsed_seconds=elapsed,
                         cvss_score=7.5, cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
                         remediation="Disable weak cipher suites. Use AES-GCM or ChaCha20."
                     ))
@@ -151,8 +140,7 @@ class TLSScanner:
                     results.append(ScanResult(
                         scanner=self.name, control_id='CRYPTO-002',
                         status='COMPLIANT',
-                        evidence=f"Cipher: {cipher_name}. No weak ciphers detected.",
-                        elapsed_seconds=elapsed
+                        evidence=f"Cipher: {cipher_name}. No weak ciphers detected."
                     ))
 
             # CRYPTO-005: Certificate validity
@@ -160,16 +148,14 @@ class TLSScanner:
                 results.append(ScanResult(
                     scanner=self.name, control_id='CRYPTO-005',
                     status='COMPLIANT',
-                    evidence=f"Certificate valid. Subject: {cert_info.get('subject', 'N/A')}\nExpires: {cert_info.get('notAfter', 'N/A')}",
-                    elapsed_seconds=elapsed
+                    evidence=f"Certificate valid. Subject: {cert_info.get('subject', 'N/A')}\nExpires: {cert_info.get('notAfter', 'N/A')}"
                 ))
 
         except (socket.timeout, ConnectionRefusedError, OSError) as e:
             results.append(ScanResult(
                 scanner=self.name, control_id='CRYPTO-001',
                 status='ERROR',
-                evidence=f"Connection failed: {e}",
-                elapsed_seconds=time.time() - start
+                evidence=f"Connection failed: {e}"
             ))
 
         return results
@@ -247,8 +233,7 @@ class HeaderScanner:
                             results.append(ScanResult(
                                 scanner=self.name, control_id=ctrl_id,
                                 status='COMPLIANT',
-                                evidence=f"X-Frame-Options not set, but CSP frame-ancestors present: {csp}",
-                                elapsed_seconds=elapsed
+                                evidence=f"X-Frame-Options not set, but CSP frame-ancestors present: {csp}"
                             ))
                             continue
 
@@ -256,7 +241,6 @@ class HeaderScanner:
                         scanner=self.name, control_id=ctrl_id,
                         status='NON_COMPLIANT', severity=info['severity'],
                         evidence=f"{header_name} header is missing.",
-                        elapsed_seconds=elapsed,
                         cvss_score=info['cvss'][0], cvss_vector=info['cvss'][1],
                         remediation=info['remediation']
                     ))
@@ -265,7 +249,6 @@ class HeaderScanner:
                         scanner=self.name, control_id=ctrl_id,
                         status='NON_COMPLIANT', severity=info['severity'],
                         evidence=f"{header_name}: {value} (expected: {expected})",
-                        elapsed_seconds=elapsed,
                         cvss_score=info['cvss'][0], cvss_vector=info['cvss'][1],
                         remediation=info['remediation']
                     ))
@@ -273,8 +256,7 @@ class HeaderScanner:
                     results.append(ScanResult(
                         scanner=self.name, control_id=ctrl_id,
                         status='COMPLIANT',
-                        evidence=f"{header_name}: {value}",
-                        elapsed_seconds=elapsed
+                        evidence=f"{header_name}: {value}"
                     ))
 
             # HEADERS-007: CORS
@@ -284,7 +266,6 @@ class HeaderScanner:
                     scanner=self.name, control_id='HEADERS-007',
                     status='NON_COMPLIANT', severity='HIGH',
                     evidence=f"CORS wildcard: Access-Control-Allow-Origin: *",
-                    elapsed_seconds=elapsed,
                     cvss_score=5.3, cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
                     remediation="Restrict CORS to specific trusted origins."
                 ))
@@ -292,16 +273,14 @@ class HeaderScanner:
                 results.append(ScanResult(
                     scanner=self.name, control_id='HEADERS-007',
                     status='COMPLIANT',
-                    evidence=f"CORS: {cors or 'Not set (restrictive default)'}",
-                    elapsed_seconds=elapsed
+                    evidence=f"CORS: {cors or 'Not set (restrictive default)'}"
                 ))
 
         except RequestException as e:
             elapsed = time.time() - start
             results.append(ScanResult(
                 scanner=self.name, control_id='HEADERS-001',
-                status='ERROR', evidence=f"HTTP request failed: {e}",
-                elapsed_seconds=elapsed
+                status='ERROR', evidence=f"HTTP request failed: {e}"
             ))
 
         return results
@@ -329,8 +308,7 @@ class CookieScanner:
                 results.append(ScanResult(
                     scanner=self.name, control_id='SESSION-001',
                     status='COMPLIANT',
-                    evidence="No cookies set by the server.",
-                    elapsed_seconds=elapsed
+                    evidence="No cookies set by the server."
                 ))
                 return results
 
@@ -359,7 +337,6 @@ class CookieScanner:
                         scanner=self.name, control_id=ctrl_id,
                         status='NON_COMPLIANT', severity=sev,
                         evidence=f"Cookie '{cookie_name}': {issue}",
-                        elapsed_seconds=elapsed,
                         cvss_score=cvss, cvss_vector=vec,
                         remediation=f"Set {issue.replace(' missing', '')} on cookie '{cookie_name}'."
                     ))
@@ -371,15 +348,13 @@ class CookieScanner:
                     results.append(ScanResult(
                         scanner=self.name, control_id=ctrl_id,
                         status='COMPLIANT',
-                        evidence=f"All cookies have proper flags for {ctrl_id}.",
-                        elapsed_seconds=elapsed
+                        evidence=f"All cookies have proper flags for {ctrl_id}."
                     ))
 
         except RequestException as e:
             results.append(ScanResult(
                 scanner=self.name, control_id='SESSION-001',
-                status='ERROR', evidence=f"Request failed: {e}",
-                elapsed_seconds=time.time() - start
+                status='ERROR', evidence=f"Request failed: {e}"
             ))
 
         return results
@@ -435,15 +410,13 @@ class AuthScanner:
                     results.append(ScanResult(
                         scanner=self.name, control_id='AUTH-004',
                         status='COMPLIANT',
-                        evidence=f"Rate limiting detected on {login_url} after {i+1} attempts.",
-                        elapsed_seconds=elapsed
+                        evidence=f"Rate limiting detected on {login_url} after {i+1} attempts."
                     ))
                 else:
                     results.append(ScanResult(
                         scanner=self.name, control_id='AUTH-004',
                         status='NON_COMPLIANT', severity='HIGH',
                         evidence=f"No rate limiting detected on {login_url} after 6 rapid login attempts.",
-                        elapsed_seconds=elapsed,
                         cvss_score=7.3, cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
                         remediation="Implement rate limiting on authentication endpoints (e.g., 5 attempts per minute)."
                     ))
@@ -454,16 +427,14 @@ class AuthScanner:
             results.append(ScanResult(
                 scanner=self.name, control_id='AUTH-001',
                 status='COMPLIANT',
-                evidence=f"Login endpoint found at {login_url}. Authentication mechanism present.",
-                elapsed_seconds=elapsed
+                evidence=f"Login endpoint found at {login_url}. Authentication mechanism present."
             ))
         else:
             results.append(ScanResult(
                 scanner=self.name, control_id='AUTH-001',
                 status='NEEDS_REVIEW',
                 evidence=f"No standard login endpoint found. Auth may use SSO or non-standard paths.",
-                confidence=0.5,
-                elapsed_seconds=elapsed
+                confidence=0.5
             ))
 
         return results
@@ -508,7 +479,6 @@ class SecretScanner:
                     scanner=self.name, control_id='SECRETS-001',
                     status='NON_COMPLIANT', severity='CRITICAL',
                     evidence=f"Secrets found in page source:\n" + '\n'.join(f"  - {s}" for s in found_secrets),
-                    elapsed_seconds=elapsed,
                     cvss_score=8.6, cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:N/A:N",
                     remediation="Remove secrets from client-side code. Use environment variables or a secrets manager."
                 ))
@@ -516,8 +486,7 @@ class SecretScanner:
                 results.append(ScanResult(
                     scanner=self.name, control_id='SECRETS-001',
                     status='COMPLIANT',
-                    evidence="No secret patterns detected in page source.",
-                    elapsed_seconds=elapsed
+                    evidence="No secret patterns detected in page source."
                 ))
 
             # Check response headers for secrets
@@ -533,7 +502,6 @@ class SecretScanner:
                     scanner=self.name, control_id=ctrl_id,
                     status='NON_COMPLIANT', severity='HIGH',
                     evidence=f"Secrets in headers:\n" + '\n'.join(f"  - {s}" for s in header_secrets),
-                    elapsed_seconds=elapsed,
                     cvss_score=7.5, cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
                     remediation="Remove secrets from HTTP response headers."
                 ))
@@ -541,15 +509,13 @@ class SecretScanner:
                 results.append(ScanResult(
                     scanner=self.name, control_id=ctrl_id,
                     status='COMPLIANT',
-                    evidence="No secrets found in response headers.",
-                    elapsed_seconds=elapsed
+                    evidence="No secrets found in response headers."
                 ))
 
         except RequestException as e:
             results.append(ScanResult(
                 scanner=self.name, control_id='SECRETS-001',
-                status='ERROR', evidence=f"Request failed: {e}",
-                elapsed_seconds=time.time() - start
+                status='ERROR', evidence=f"Request failed: {e}"
             ))
 
         return results
@@ -589,7 +555,6 @@ class ErrorHandlingScanner:
                     scanner=self.name, control_id='ERROR-001',
                     status='NON_COMPLIANT', severity='MEDIUM',
                     evidence=f"Error page exposes implementation details.\nIndicators found: {', '.join(exposed)}\nStatus: {resp.status_code}",
-                    elapsed_seconds=elapsed,
                     cvss_score=5.3, cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
                     remediation="Configure custom error pages. Disable debug mode in production."
                 ))
@@ -597,15 +562,13 @@ class ErrorHandlingScanner:
                 results.append(ScanResult(
                     scanner=self.name, control_id='ERROR-001',
                     status='COMPLIANT',
-                    evidence=f"Error page (status {resp.status_code}) does not expose sensitive details.",
-                    elapsed_seconds=elapsed
+                    evidence=f"Error page (status {resp.status_code}) does not expose sensitive details."
                 ))
 
         except RequestException as e:
             results.append(ScanResult(
                 scanner=self.name, control_id='ERROR-001',
-                status='ERROR', evidence=f"Request failed: {e}",
-                elapsed_seconds=time.time() - start
+                status='ERROR', evidence=f"Request failed: {e}"
             ))
 
         return results
@@ -660,8 +623,7 @@ class AuthzScanner:
                 status='NON_COMPLIANT', severity='CRITICAL',
                 evidence=f"Admin/privileged endpoints accessible without authentication:\n" +
                          '\n'.join(f"  {p}" for p in accessible_admin),
-                confidence=0.85, elapsed_seconds=elapsed,
-                cvss_score=8.8, cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N",
+                confidence=0.85, cvss_score=8.8, cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N",
                 reachability='DIRECT',
                 remediation="Restrict admin endpoints with authentication middleware. Return 401/403 for unauthenticated requests."
             ))
@@ -670,7 +632,7 @@ class AuthzScanner:
                 scanner=self.name, control_id='AUTHZ-001',
                 status='COMPLIANT',
                 evidence=f"Tested {len(self.ADMIN_PATHS)} admin paths — all returned 401/403 or redirect to login.",
-                confidence=0.8, elapsed_seconds=elapsed
+                confidence=0.8
             ))
 
         # AUTHZ-002: IDOR / object-level access — probe sequential IDs
@@ -695,8 +657,7 @@ class AuthzScanner:
                 evidence=f"Sensitive endpoints accessible without authentication — potential IDOR:\n" +
                          '\n'.join(f"  {e}" for e in idor_evidence) +
                          "\n\nManual verification needed: do these endpoints enforce object-level authorization?",
-                confidence=0.7, elapsed_seconds=elapsed,
-                cvss_score=8.2, cvss_vector="CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
+                confidence=0.7, cvss_score=8.2, cvss_vector="CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
                 reachability='DIRECT',
                 remediation="Implement object-level authorization checks. Verify the requesting user owns or has permission to access each object."
             ))
@@ -705,7 +666,7 @@ class AuthzScanner:
                 scanner=self.name, control_id='AUTHZ-002',
                 status='COMPLIANT',
                 evidence=f"Tested {len(self.SENSITIVE_PATHS)} sensitive paths — all returned 401/403 or not found.",
-                confidence=0.7, elapsed_seconds=elapsed
+                confidence=0.7
             ))
 
         # AUTHZ-003: Role-based access — check for role indicators in responses
@@ -717,8 +678,7 @@ class AuthzScanner:
                      f"Sensitive paths tested: {len(self.SENSITIVE_PATHS)} — {len(idor_evidence)} accessible\n\n"
                      f"Manual review required: verify role-based access control is consistently applied "
                      f"across all endpoints, not just the paths tested by the scanner.",
-            confidence=0.5, elapsed_seconds=elapsed,
-            remediation="Implement RBAC middleware. Verify each endpoint checks the user's role before serving data."
+            confidence=0.5, remediation="Implement RBAC middleware. Verify each endpoint checks the user's role before serving data."
         ))
 
         # AUTHZ-004: Least privilege
@@ -731,8 +691,7 @@ class AuthzScanner:
                      f"- API endpoints exposing data: {len(idor_evidence)}\n\n"
                      f"Review: Are users granted only the minimum permissions necessary? "
                      f"Are there separate roles for read-only vs. read-write vs. admin?",
-            confidence=0.4, elapsed_seconds=elapsed,
-            remediation="Implement role hierarchy with least privilege. Audit user permissions regularly."
+            confidence=0.4, remediation="Implement role hierarchy with least privilege. Audit user permissions regularly."
         ))
 
         return results
@@ -781,8 +740,7 @@ class InputValidationScanner:
                                  f"CSRF tokens appear present in some forms. "
                                  f"Manual review required to verify all state-changing forms are protected "
                                  f"and tokens are validated server-side.",
-                        confidence=0.6, elapsed_seconds=elapsed,
-                        cvss_score=8.0, cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N",
+                        confidence=0.6, cvss_score=8.0, cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N",
                         remediation="Ensure all forms include anti-CSRF tokens. Validate tokens server-side on every POST."
                     ))
                 else:
@@ -793,8 +751,7 @@ class InputValidationScanner:
                                  f"CSRF token indicators: NONE detected\n\n"
                                  f"No CSRF tokens found in any form. Check if SameSite cookies or "
                                  f"custom headers are used as alternative CSRF protection.",
-                        confidence=0.75, elapsed_seconds=elapsed,
-                        cvss_score=8.0, cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N",
+                        confidence=0.75, cvss_score=8.0, cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N",
                         remediation="Add anti-CSRF tokens to all state-changing forms."
                     ))
             else:
@@ -805,8 +762,7 @@ class InputValidationScanner:
                              f"This may be a SPA (single-page app) that uses API calls.\n"
                              f"Check if API endpoints use CSRF tokens, SameSite cookies, or "
                              f"custom headers (X-Requested-With) for CSRF protection.",
-                    confidence=0.4, elapsed_seconds=elapsed,
-                    remediation="For SPAs, use SameSite=Strict cookies or custom request headers for CSRF protection."
+                    confidence=0.4, remediation="For SPAs, use SameSite=Strict cookies or custom request headers for CSRF protection."
                 ))
 
             # INPUT-003: Reflected XSS test
@@ -829,8 +785,7 @@ class InputValidationScanner:
                     status='NON_COMPLIANT', severity='HIGH',
                     evidence=f"Reflected XSS detected:\n" +
                              '\n'.join(f"  {x}" for x in xss_reflected),
-                    confidence=0.9, elapsed_seconds=time.time() - start,
-                    cvss_score=6.1, cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
+                    confidence=0.9, cvss_score=6.1, cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
                     reachability='DIRECT',
                     remediation="HTML-encode all user input before rendering. Implement Content-Security-Policy."
                 ))
@@ -839,7 +794,7 @@ class InputValidationScanner:
                     scanner=self.name, control_id='INPUT-003',
                     status='COMPLIANT',
                     evidence=f"Tested {len(self.XSS_PAYLOADS)} XSS payloads across {len(test_paths)} paths — no reflection detected.",
-                    confidence=0.7, elapsed_seconds=time.time() - start
+                    confidence=0.7
                 ))
 
             # INPUT-001: Server-side validation — check for common validation headers/patterns
@@ -853,8 +808,7 @@ class InputValidationScanner:
                          f"{body.lower().count('required') + body.lower().count('pattern=') + body.lower().count('maxlength')}\n"
                          f"- Content-Type header: {resp.headers.get('Content-Type', 'not set')}\n\n"
                          f"Client-side validation found but server-side validation must be verified manually.",
-                confidence=0.4, elapsed_seconds=elapsed,
-                remediation="Validate all input server-side. Never rely solely on client-side validation."
+                confidence=0.4, remediation="Validate all input server-side. Never rely solely on client-side validation."
             ))
 
             # INPUT-004: File upload — check for upload endpoints
@@ -868,8 +822,7 @@ class InputValidationScanner:
                              f"Indicators: {', '.join(upload_found)}\n\n"
                              f"Review: Are uploaded files validated for type, size, and content? "
                              f"Are they stored outside the web root? Are they scanned for malware?",
-                    confidence=0.6, elapsed_seconds=elapsed,
-                    cvss_score=7.5, cvss_vector="CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
+                    confidence=0.6, cvss_score=7.5, cvss_vector="CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
                     remediation="Validate file type (allowlist), enforce size limits, scan uploads, store outside web root."
                 ))
             else:
@@ -877,14 +830,13 @@ class InputValidationScanner:
                     scanner=self.name, control_id='INPUT-004',
                     status='COMPLIANT',
                     evidence="No file upload functionality detected on the main page.",
-                    confidence=0.5, elapsed_seconds=elapsed
+                    confidence=0.5
                 ))
 
         except RequestException as e:
             results.append(ScanResult(
                 scanner=self.name, control_id='INPUT-001',
-                status='ERROR', evidence=f"Request failed: {e}",
-                elapsed_seconds=time.time() - start
+                status='ERROR', evidence=f"Request failed: {e}"
             ))
 
         return results
@@ -954,8 +906,7 @@ class EndpointDiscoveryScanner:
                     evidence=f"Technology stack exposed in HTTP headers:\n" +
                              '\n'.join(f"  {t}" for t in tech_indicators) +
                              f"\n\nExposing server technology helps attackers target known vulnerabilities.",
-                    confidence=0.8, elapsed_seconds=elapsed,
-                    cvss_score=3.7, cvss_vector="CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:N/A:N",
+                    confidence=0.8, cvss_score=3.7, cvss_vector="CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:N/A:N",
                     remediation="Remove Server and X-Powered-By headers from responses."
                 ))
             else:
@@ -963,7 +914,7 @@ class EndpointDiscoveryScanner:
                     scanner=self.name, control_id='INFRA-002',
                     status='COMPLIANT',
                     evidence="No technology-revealing headers detected (Server, X-Powered-By removed).",
-                    confidence=0.8, elapsed_seconds=elapsed
+                    confidence=0.8
                 ))
 
             # COMP-001 / INFRA-004: Sensitive files exposed
@@ -973,8 +924,7 @@ class EndpointDiscoveryScanner:
                     status='NON_COMPLIANT', severity='CRITICAL',
                     evidence=f"Sensitive files/endpoints publicly accessible:\n" +
                              '\n'.join(f"  {s}" for s in sensitive_exposed),
-                    confidence=0.9, elapsed_seconds=elapsed,
-                    cvss_score=7.5, cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+                    confidence=0.9, cvss_score=7.5, cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
                     reachability='DIRECT',
                     remediation="Block access to sensitive files (.env, .git, debug endpoints) via web server config."
                 ))
@@ -983,7 +933,7 @@ class EndpointDiscoveryScanner:
                     scanner=self.name, control_id='INFRA-004',
                     status='COMPLIANT',
                     evidence=f"No sensitive files exposed. Tested: .env, .git, .htaccess, debug, metrics, trace.",
-                    confidence=0.8, elapsed_seconds=elapsed
+                    confidence=0.8
                 ))
 
             # DATA-004: Information disclosure via error/info endpoints
@@ -995,8 +945,7 @@ class EndpointDiscoveryScanner:
                     evidence=f"Information endpoints accessible:\n" +
                              '\n'.join(f"  {e}" for e in info_endpoints) +
                              f"\n\nReview: Do these endpoints expose internal details (versions, IPs, configs)?",
-                    confidence=0.6, elapsed_seconds=elapsed,
-                    remediation="Restrict info/health endpoints to internal networks or require authentication."
+                    confidence=0.6, remediation="Restrict info/health endpoints to internal networks or require authentication."
                 ))
 
             # AUDIT-001: Security event logging
@@ -1018,8 +967,7 @@ class EndpointDiscoveryScanner:
                          f"- Debug/trace endpoints: {'EXPOSED' if any('/debug' in e or '/trace' in e for e in accessible) else 'not found'}\n\n"
                          f"Review: Are security events (auth failures, authz violations, input validation failures) logged? "
                          f"Are logs tamper-evident and stored separately from the application?",
-                confidence=0.3, elapsed_seconds=elapsed,
-                remediation="Implement security event logging for auth, authz, and input validation events."
+                confidence=0.3, remediation="Implement security event logging for auth, authz, and input validation events."
             ))
 
             # Summary for DATA-002: Overall data exposure assessment
@@ -1034,15 +982,13 @@ class EndpointDiscoveryScanner:
                          f"Accessible endpoints:\n" +
                          ('\n'.join(f"  {a}" for a in accessible) if accessible else "  None") +
                          f"\n\nReview: Is PII minimized in API responses? Are sensitive fields filtered?",
-                confidence=0.5, elapsed_seconds=elapsed,
-                remediation="Minimize data exposure in API responses. Use field-level filtering."
+                confidence=0.5, remediation="Minimize data exposure in API responses. Use field-level filtering."
             ))
 
         except RequestException as e:
             results.append(ScanResult(
                 scanner=self.name, control_id='INFRA-001',
-                status='ERROR', evidence=f"Discovery failed: {e}",
-                elapsed_seconds=time.time() - start
+                status='ERROR', evidence=f"Discovery failed: {e}"
             ))
 
         return results
@@ -1081,8 +1027,7 @@ class SessionScanner:
                                 status='NON_COMPLIANT', severity='HIGH',
                                 evidence=f"Session ID '{name}' is only {len(value)} characters (minimum recommended: 16).\n"
                                          f"Short session IDs are susceptible to brute-force attacks.",
-                                confidence=0.8, elapsed_seconds=elapsed,
-                                cvss_score=7.5, cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+                                confidence=0.8, cvss_score=7.5, cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
                                 remediation="Use cryptographically random session IDs of at least 128 bits (32 hex chars)."
                             ))
                         else:
@@ -1090,7 +1035,7 @@ class SessionScanner:
                                 scanner=self.name, control_id='SESSION-001',
                                 status='COMPLIANT',
                                 evidence=f"Session ID '{name}' is {len(value)} characters — adequate length.",
-                                confidence=0.7, elapsed_seconds=elapsed
+                                confidence=0.7
                             ))
                         break
 
@@ -1103,8 +1048,7 @@ class SessionScanner:
                              f"Cookie persistence: {'Same values on 2nd request' if cookies1 == cookies2 else 'Values changed between requests'}\n\n"
                              f"Review: Is session timeout configured to <=30 minutes? "
                              f"Is idle timeout enforced server-side?",
-                    confidence=0.3, elapsed_seconds=elapsed,
-                    remediation="Set session timeout to 30 minutes or less. Enforce server-side idle timeout."
+                    confidence=0.3, remediation="Set session timeout to 30 minutes or less. Enforce server-side idle timeout."
                 ))
 
             # AUTH-003: MFA support
@@ -1119,7 +1063,6 @@ class SessionScanner:
                          f"{'MFA references detected in page content.' if mfa_found else 'No MFA references found in page content.'}\n"
                          f"Review: Is MFA available and enforced for privileged accounts?",
                 confidence=0.4 if not mfa_found else 0.6,
-                elapsed_seconds=elapsed,
                 remediation="Implement MFA for all user accounts, especially admin/privileged accounts."
             ))
 
@@ -1131,15 +1074,13 @@ class SessionScanner:
                          f"Rate limiting was tested by the auth-probe scanner (see AUTH-004 results).\n"
                          f"Review: After N failed attempts, is the account locked or rate-limited? "
                          f"Is there a CAPTCHA after failed attempts?",
-                confidence=0.3, elapsed_seconds=elapsed,
-                remediation="Lock accounts after 5 failed attempts for 30 minutes, or require CAPTCHA."
+                confidence=0.3, remediation="Lock accounts after 5 failed attempts for 30 minutes, or require CAPTCHA."
             ))
 
         except RequestException as e:
             results.append(ScanResult(
                 scanner=self.name, control_id='SESSION-001',
-                status='ERROR', evidence=f"Session analysis failed: {e}",
-                elapsed_seconds=time.time() - start
+                status='ERROR', evidence=f"Session analysis failed: {e}"
             ))
 
         return results

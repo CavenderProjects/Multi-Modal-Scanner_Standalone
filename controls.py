@@ -253,6 +253,7 @@ def _parse_control_section(section: str, library_key: str) -> Optional[Control]:
         statement=statement,
         test_procedure=test_proc,
         review_procedure=review_proc,
+        fix_text=fields.get('fix text', fields.get('fix', '')),
         tier=tier,
         cwe=cwe,
         languages=languages,

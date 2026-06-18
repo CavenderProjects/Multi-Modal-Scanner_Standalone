@@ -119,20 +119,6 @@ def detect_target(user_input: str) -> dict:
     return _result("unknown")
 
 
-def detect_languages(paths: list) -> list:
-    """Detect programming languages from a list of file paths."""
-    lang_map = {
-        '.py': 'Python', '.js': 'JavaScript', '.ts': 'TypeScript',
-        '.jsx': 'JavaScript', '.tsx': 'TypeScript', '.rs': 'Rust',
-        '.java': 'Java', '.go': 'Go', '.php': 'PHP',
-        '.cs': 'C#', '.cpp': 'C++', '.c': 'C', '.h': 'C/C++', '.hpp': 'C++',
-    }
-    langs = set()
-    for p in paths:
-        ext = os.path.splitext(p)[1].lower()
-        if ext in lang_map:
-            langs.add(lang_map[ext])
-    return sorted(langs)
 
 
 def extract_hostname(target: str) -> str:
