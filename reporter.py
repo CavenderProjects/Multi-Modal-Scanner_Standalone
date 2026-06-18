@@ -77,15 +77,17 @@ def extract_prior_data_from_report(html_path: str) -> dict:
             if not isinstance(c, dict) or not c.get('id'):
                 continue
             # Handle both non-STIG field names (mitigation/mitigationDesc/note)
-            # and STIG field names (isFalsePositive/fpJustification)
-            is_fp   = c.get('mitigation') == 'YES' or bool(c.get('isFalsePositive'))
-            just    = (c.get('mitigationDesc') or c.get('fpJustification', '')).strip()
-            note    = (c.get('note') or c.get('userNotes', '')).strip()
-            if is_fp or note:
+            # and STIG field names (isFalsePositive/fpJustification/userNotes/stigStatus)
+            is_fp       = c.get('mitigation') == 'YES' or bool(c.get('isFalsePositive'))
+            just        = (c.get('mitigationDesc') or c.get('fpJustification', '')).strip()
+            note        = (c.get('note') or c.get('userNotes', '')).strip()
+            stig_status = c.get('stigStatus', '').strip()
+            if is_fp or note or stig_status:
                 result[c['id']] = {
                     'is_fp':         is_fp,
                     'justification': just if is_fp else '',
                     'note':          note,
+                    'stig_status':   stig_status,
                 }
         return result
     except Exception:
@@ -298,8 +300,7 @@ def _generate_stig_html_report(engine, output_path: str) -> str:
         with open(template_path, 'r', encoding='utf-8') as f:
             template = f.read()
 
-        data_script = f"""
-<script>
+        meta_script = f"""<script>
 var STIG_META = {{
     target: {json.dumps(engine.target)},
     date: "{datetime.now().strftime('%Y-%m-%d %H:%M')}",
@@ -312,9 +313,12 @@ var STIG_META = {{
     naCount:  {na_count},
     nrCount:  {nr_count}
 }};
-var CONTROLS = {json.dumps(stig_data, indent=2)};
 </script>"""
-        html = template.replace('</head>', data_script + '\n</head>')
+        controls_tag = ('<script type="application/json" id="sat-controls-data">'
+                        + json.dumps(stig_data)
+                        + '</script>')
+        html = template.replace('</head>', meta_script + '\n</head>')
+        html = html.replace('<!-- SAT-CONTROLS-PLACEHOLDER -->', controls_tag)
     else:
         html = _generate_stig_fallback_html(engine, stig_data, summary,
                                             open_cat1, open_cat2, open_cat3)
@@ -366,8 +370,8 @@ def generate_markdown_report(engine, output_path: str) -> str:
     lines.append(f"| Tier | Total | Findings |")
     lines.append(f"|---|---|---|")
     lines.append(f"| Automatic confirmation | {summary['auto_total']} | {summary['auto_findings']} |")
-    lines.append(f"| Review required | {summary['review_total']} | {summary['review_decided']} decided |")
-    lines.append(f"| Manual confirmation | {summary['manual_total']} | {summary['manual_decided']} decided |")
+    lines.append(f"| Review required | {summary['review_total']} | — |")
+    lines.append(f"| Manual confirmation | {summary['manual_total']} | — |")
     lines.append(f"")
 
     if findings:

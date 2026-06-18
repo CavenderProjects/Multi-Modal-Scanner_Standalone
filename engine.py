@@ -336,6 +336,28 @@ class AssessmentEngine:
                     ar.fp_justification = "Carried forward from previous assessment report"
                     ar.status = 'FALSE_POSITIVE'
 
+        # Carry forward STIG triage decisions from a prior saved report
+        # Only applies to controls with library == 'stig' that are still Not Reviewed
+        _STIG_STATUS_MAP = {
+            'Open':          'NON_COMPLIANT',
+            'Not a Finding': 'COMPLIANT',
+            'Not Applicable': 'NOT_APPLICABLE',
+            'Not Reviewed':  'NEEDS_REVIEW',
+        }
+        if self.prior_report_data:
+            for ar in self.all_results:
+                if getattr(ar.control, 'library', None) != 'stig':
+                    continue
+                cid = ar.control.control_id
+                prior = self.prior_report_data.get(cid)
+                if not prior:
+                    continue
+                stig_status = prior.get('stig_status', '').strip()
+                if stig_status and stig_status != 'Not Reviewed':
+                    mapped = _STIG_STATUS_MAP.get(stig_status)
+                    if mapped and ar.status in ('NEEDS_REVIEW', 'NOT_STARTED'):
+                        ar.status = mapped
+
 
     def complete(self, report_path: str = None):
         """Finalize the scan, update DB."""
