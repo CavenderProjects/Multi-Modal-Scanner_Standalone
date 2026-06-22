@@ -27,12 +27,12 @@ TEMPLATES = {
     'api':            'api-report-template.html',
     'code_review':    'code-review-report-template.html',
     'interconnected': 'interconnected-report-template.html',
-    'os':             'report-template.html',
+    'os':             'os-report-template.html',
     'agent':          'agent-report-template.html',
 }
 
 TITLES = {
-    'website':        'Security Assessment Report',
+    'website':        'Website Security Assessment',
     'api':            'API Security Assessment',
     'code_review':    'Code Review Security Assessment',
     'interconnected': 'Interconnected Systems Security Assessment',
@@ -558,7 +558,7 @@ for c in WEBSITE_CONTROLS:
         cc['status']        = 'FALSE_POSITIVE'
     fp_controls.append(cc)
 
-html_fp = render(fp_controls, 'Security Assessment Report', 'api.example.com',
+html_fp = render(fp_controls, 'Website Security Assessment', 'api.example.com',
                  str(uuid.uuid4())[:8], TEMPLATES['website'])
 out_fp = os.path.join(OUT_DIR, 'test-report-fps.html')
 with open(out_fp, 'w', encoding='utf-8') as f:

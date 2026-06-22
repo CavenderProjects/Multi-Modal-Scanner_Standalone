@@ -118,7 +118,7 @@ def get_template_path(target_type: str = None, selected_sets: list = None):
     elif 'api' in sets or target_type == 'api':
         name = 'api-report-template.html'
     elif 'os_software' in sets or target_type == 'os':
-        name = 'report-template.html'
+        name = 'os-report-template.html'
     elif 'website_agent' in sets or target_type == 'agent':
         name = 'agent-report-template.html'
     else:
