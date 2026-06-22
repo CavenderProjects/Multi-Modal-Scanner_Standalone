@@ -8,7 +8,6 @@ import json
 import csv
 import io
 import os
-import uuid
 from datetime import datetime
 from pathlib import Path
 from detector import extract_hostname
@@ -139,7 +138,7 @@ def _report_title(target_type: str = None, selected_sets: list = None) -> str:
         return 'Agent Security Assessment'
     if 'os_software' in sets or target_type == 'os':
         return 'OS & Software Security Assessment'
-    return 'Security Assessment Report'
+    return 'Website Security Assessment'
 
 
 def get_stig_template_path():
@@ -186,9 +185,9 @@ def generate_html_report(engine, output_path: str) -> str:
             "evidence": r.evidence or "",
             "finding": r.evidence or "",
             "remediation": r.remediation or r.control.fix_text or "",
-            "mitigation": "YES" if r.is_false_positive else "NO",
-            "mitigationDesc": r.fp_justification if r.is_false_positive else "",
-            "note": getattr(r, 'user_notes', '') or "",
+            "isFalsePositive": r.is_false_positive,
+            "fpJustification": r.fp_justification or "",
+            "userNotes": getattr(r, 'user_notes', '') or "",
             "tier": r.tier,
             "statement": r.control.statement or "",
             "review_steps": r.control.review_procedure or r.control.test_procedure or "",
@@ -233,7 +232,6 @@ def generate_html_report(engine, output_path: str) -> str:
             '{{INFO_COUNT}}':          str(sev('INFORMATIONAL')),
             '{{CONTROLS_JSON}}':       json.dumps(findings_data).replace('</', '<\\/'),
             '{{REPORT_DATE}}':         datetime.now().strftime('%Y-%m-%d %H:%M'),
-            '{{REPORT_ID}}':           str(uuid.uuid4())[:8],
         }
         html = template
         for placeholder, value in substitutions.items():

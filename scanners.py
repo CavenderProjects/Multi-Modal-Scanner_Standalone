@@ -998,7 +998,7 @@ class SessionScanner:
     """Deep session management analysis beyond basic cookie flags."""
     name = "session-analyzer"
     description = "Session management deep analysis"
-    controls = ['SESSION-001', 'SESSION-002', 'AUTH-003', 'AUTH-006']
+    controls = ['SESSION-001', 'SESSION-002', 'AUTH-002', 'AUTH-003', 'AUTH-006']
 
     def scan(self, target: str) -> list:
         if not HAS_REQUESTS:
@@ -1051,19 +1051,57 @@ class SessionScanner:
                     confidence=0.3, remediation="Set session timeout to 30 minutes or less. Enforce server-side idle timeout."
                 ))
 
-            # AUTH-003: MFA support
+            # AUTH-002: MFA support (passive — check page content for MFA indicators)
             body = resp1.text.lower()
             mfa_indicators = ['mfa', 'two-factor', '2fa', 'totp', 'authenticator', 'otp', 'verify-code']
             mfa_found = [ind for ind in mfa_indicators if ind in body]
             results.append(ScanResult(
-                scanner=self.name, control_id='AUTH-003',
+                scanner=self.name, control_id='AUTH-002',
                 status='NEEDS_REVIEW', severity='HIGH',
                 evidence=f"MFA detection from page content:\n"
                          f"MFA indicators found: {', '.join(mfa_found) if mfa_found else 'NONE'}\n\n"
-                         f"{'MFA references detected in page content.' if mfa_found else 'No MFA references found in page content.'}\n"
+                         f"{'MFA references detected — verify MFA is enforced, not just available.' if mfa_found else 'No MFA references found. Verify whether MFA is supported.'}\n"
                          f"Review: Is MFA available and enforced for privileged accounts?",
                 confidence=0.4 if not mfa_found else 0.6,
                 remediation="Implement MFA for all user accounts, especially admin/privileged accounts."
+            ))
+
+            # AUTH-003: Brute Force Protection (passive — headers, CAPTCHA, lockout messaging)
+            headers = dict(resp1.headers)
+            header_keys_lower = [h.lower() for h in headers]
+            ratelimit_headers = [h for h in header_keys_lower if 'ratelimit' in h or 'rate-limit' in h or 'retry-after' in h]
+            captcha_indicators = ['recaptcha', 'hcaptcha', 'cf-turnstile', 'g-recaptcha', 'data-sitekey', 'captcha-container', 'captcha']
+            captcha_found = [ind for ind in captcha_indicators if ind in body]
+            lockout_indicators = ['account locked', 'too many attempts', 'too many requests', 'temporarily blocked', 'account suspended', 'account disabled']
+            lockout_found = [ind for ind in lockout_indicators if ind in body]
+
+            if ratelimit_headers or captcha_found:
+                bf_status = 'COMPLIANT'
+                bf_conf = 0.75
+                bf_evidence = (
+                    f"Passive brute force protection indicators found:\n"
+                    f"Rate limit headers: {', '.join(ratelimit_headers) if ratelimit_headers else 'none'}\n"
+                    f"CAPTCHA indicators in HTML: {', '.join(captcha_found) if captcha_found else 'none'}\n\n"
+                    f"These passive signals suggest rate limiting or CAPTCHA is implemented. "
+                    f"Confirm by attempting multiple rapid failed logins to verify enforcement."
+                )
+            else:
+                bf_status = 'NEEDS_REVIEW'
+                bf_conf = 0.3
+                bf_evidence = (
+                    f"No passive brute force protection indicators detected:\n"
+                    f"Rate limit headers (X-RateLimit-*, Retry-After): none found\n"
+                    f"CAPTCHA indicators in HTML: none found\n"
+                    f"Lockout text in response: {', '.join(lockout_found) if lockout_found else 'none'}\n\n"
+                    f"Review: Manually attempt 10+ rapid failed logins to a known endpoint and "
+                    f"observe whether a 429 response, lockout, delay, or CAPTCHA is triggered."
+                )
+            results.append(ScanResult(
+                scanner=self.name, control_id='AUTH-003',
+                status=bf_status, severity='HIGH',
+                evidence=bf_evidence,
+                confidence=bf_conf,
+                remediation="Implement rate limiting (e.g., 5 attempts per minute), account lockout after 10 failures, or CAPTCHA on authentication endpoints."
             ))
 
             # AUTH-006: Account lockout
